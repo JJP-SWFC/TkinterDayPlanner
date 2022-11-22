@@ -26,11 +26,17 @@ def createEvent():
                     prevstarttime = i.split(" at ")[-1].split(" until ")[0].split(":")
                     if not checkEarlier(mystarttime, prevstarttime):
                         index += 1
+            f.close()
 
         myevents.insert(index, myentry)
         with open(myfn, "w") as f:
             myevents = "".join(myevents)
             f.write(myevents)
+            f.close()
+        with open(myfn,"r") as f:
+            mylines = f.readlines()
+            f.close()
+        getNextFive(mylines, ne)
 
     # Command for the confirm event button
     def ceButton():
@@ -40,7 +46,7 @@ def createEvent():
         else:
             fulltext = eventname.get() + " at " + v1.get()+":"+v2.get() + " until " + v3.get()+":"+v4.get()+"\n"
             wcp(fulltext)
-            getNextFive(myfn, ne)
+            getNextFive(mylines, ne)
             cew.destroy()
     hourslist = list(range(0,24))
     for i in range(0,10):
@@ -50,6 +56,10 @@ def createEvent():
     minuteslist[1] = "05"
     currentdate = dt.date.today()
     myfn = str(currentdate) + "-plan.txt"
+    with open(myfn, "a+") as f:
+        f.seek(0)
+        mylines = f.readlines()
+        f.close()
     cew = Toplevel(main)
     cew.title("Create event")
     cew.geometry("400x200")
@@ -77,15 +87,17 @@ def createEvent():
     Button(cew, text="Create Event", command=ceButton).place(relx = 0.5, rely = 0.7, anchor = N, relwidth = 0.4, relheight = 0.2)
 
 
-
+# Just opens the file in write mode so it clears it
 def clearFile(filename):
     open(filename, 'w').close()
-
+    getNextFive(myfn, ne)
+# Function for the window to confirm you want to delete all events
 def conf_delete():
     todayfile = str(dt.date.today()) + "-plan.txt"
     top = Toplevel(main)
     top.title("Confirm deletion")
     top.geometry("600x200")
+    # Labels and buttons
     Label(top,
           text="Are you sure you want to delete all events?",
           font=("Helvetica 18 bold")
@@ -100,41 +112,63 @@ def conf_delete():
            font=("Helvetica 18"),
            command=top.destroy
            ).place(rely=0.7, relx=0.7, anchor=N, relwidth=0.2, relheight=0.3)
-
-def getNextFive(file, labels):
+# Gets and updates the next 5 upcoming tasks
+def getNextFive(filelines, labels):
     now = datetime.now()
+    print(filelines)
     currenttime = [now.hour, now.minute]
     myindex = 0
-    with open(file, "r") as f:
-        global ne
-        mylines = f.readlines()
-        linenum = len(mylines)
-        f.seek(0)
-        for i, x in enumerate(mylines):
-            if x.strip():
-                myst = x.split(" at ")[-1].split(" until ")[0].split(":")
-                if checkEarlier(currenttime, myst):
-                    myindex = i
-                    break
-    if(len(mylines)!=0):
-        finalev = mylines[-1]
+    linenum = len(filelines)
+    # Takes each line, checks the time of that line then calls checkEarlier between the current time and event time
+    # Also sets "myindex" to the index of the next event
+    for i, x in enumerate(filelines):
+        if x.strip():
+            myst = x.split(" at ")[-1].split(" until ")[0].split(":")
+            if checkEarlier(currenttime, myst):
+                myindex = i
+                break
+    # The program throws an error if there are no lines like there would be at the start of the day
+    if(len(filelines)!=0):
+        finalev = filelines[-1]
         finaltime = finalev.split(" at ")[-1].split(" until ")[0].split(":")
+        # Checks if the last task has been done
         if checkEarlier(currenttime, finaltime):
-            for j in range(myindex, min(5+myindex,linenum)):
-                labels[j-myindex].config(text=mylines[j], fg="black")
+            # If the last task hasn't been done, find the next 5 tasks or the next n tasks
+            # Whichever is smallest, where n is the number of tasks left.
+            if(linenum-myindex >= 5):
+                for j in range(myindex, min(5+myindex,linenum)):
+                    # Sets the labels of the array [ne] which is defined in the 'if __name__ == "__main__"' statement
+                    labels[j-myindex].config(text=filelines[j], fg="black")
+            else:
+                totlines = linenum-myindex
+                lileft = 5-totlines
+                for j in range(myindex, totlines):
+                    labels[j-myindex].config(text=filelines[j], fg="black")
+                for j in range(totlines, lileft+totlines):
+                    labels[j].config(text="No Task", fg="black")
         else:
             labels[0].config(text="All tasks done for today!", fg="green")
+            for i in range(1, 5):
+                labels[i].config(text="No Task")
+    # If you have no tasks at all then you've done everything you need to do, technically
     else:
         labels[0].config(text="All tasks done for today!", fg="green")
+        for i in range(1,5):
+            labels[i].config(text="No Task")
 
+# Shows a list of all events
 def showAllEvents():
+    # Clears the label that shows "no events" after 5 seconds (5000 ms)
     def clearLabel():
         noevents['text'] = ''
+    # Create a new window
     allEvents = Toplevel(main)
     allEvents.title("List of Events")
     file = str(dt.date.today()) + "-plan.txt"
+    # Create the scrollbar and put it on the right to fill all of the Y axis
     scrollbar = Scrollbar(allEvents)
     scrollbar.pack(side=RIGHT, fill=Y)
+    # Create an empty list
     mylist = Listbox(allEvents, yscrollcommand = scrollbar.set, bd=0, relief="flat", font=("Ariel 13"),selectmode=SINGLE)
     with open(file, "r") as f:
         allevents = f.readlines()
@@ -143,9 +177,11 @@ def showAllEvents():
             noevents.place(anchor=S, relx=0.25, rely=0.3)
             allEvents.destroy()
             main.after(5000, clearLabel)
+            f.close()
             return
     for event in allevents:
         mylist.insert(END, "- "+event)
+    # Set the width to the width of the longest element
     mylist.config(width=0)
     if(len(allevents) < 8):
         newheight = 8
@@ -154,19 +190,40 @@ def showAllEvents():
     mylist.config(height=newheight)
     mylist.pack()
     scrollbar.config(command=mylist.yview)
+def refreshEvents():
+    global myfn, ne
+    with open(myfn, "r") as f:
+        mylines = f.readlines()
+        f.flush()
+        f.close()
+    getNextFive(mylines, ne)
+    main.after(1000, refreshEvents)
 
 def deleteEvent():
+    global ne
     def clearLabel():
         noevents['text'] = ''
     def getSelection():
-        with open(file, "r") as f:
+        selarray = []
+        with open(file, "a+") as f:
+            f.seek(0)
             allevents = f.readlines()
-        for i in mylist.curselection():
-            allevents.pop(i)
-            mylist.delete(i)
-        with open(file, "w") as f:
+            for i in mylist.curselection():
+                print(i)
+                allevents.pop(i)
+                mylist.delete(i)
+                f.close()
+        with open(file,"w") as f:
             allevents = ''.join(allevents)
             f.write(allevents)
+            f.flush()
+            f.close()
+        with open(file,"r") as f:
+            f.flush()
+            mydata = f.readlines()
+            print(mydata)
+            getNextFive(mydata, ne)
+            f.close()
 
     file = str(dt.date.today()) + "-plan.txt"
     de = Toplevel(main)
@@ -181,19 +238,22 @@ def deleteEvent():
             noevents.place(anchor=S, relx=0.25, rely=0.55)
             de.destroy()
             main.after(5000, clearLabel)
+            f.close()
             return
+        f.close()
     for event in allevents:
         mylist.insert(END, "- " + event)
     mylist.config(width=0)
     mylist.config(height=10)
     mylist.pack()
-    Button(de, text="Delete", command=getSelection).pack()
+    Button(de, text="Delete", command=lambda:[getSelection(),getNextFive(allevents, ne)]).pack()
     scrollbar.config(command=mylist.yview)
 if __name__ == '__main__':
     myfn = str(dt.date.today()) + "-plan.txt"
     with open(myfn, "a+") as f:
         f.seek(0)
         mydata = f.readlines()
+        f.close()
     main = Tk()
     main.geometry("600x300")
     main.title("Day Planner")
@@ -219,5 +279,6 @@ if __name__ == '__main__':
     for i,_ in enumerate(ne):
         ne[i].place(anchor=N,relx=0.75,rely=(0.2+0.16*i), relwidth=0.5, relheight=0.16)
     linebet = ttk.Separator(main, orient=VERTICAL, style="red.TSeparator").place(relx=0.5, relheight = 1, rely=0)
-    getNextFive(myfn, ne)
+    getNextFive(mydata, ne)
+    refreshEvents()
     main.mainloop()
